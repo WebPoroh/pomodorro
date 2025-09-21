@@ -4,6 +4,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Pomodoro Таймер с Бэкендом</title>
+    <link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>🍅</text></svg>">
     <style>
         :root {
             --primary: #d95550;
@@ -310,8 +311,8 @@
     </div>
 
     <script>
-        // API base URL - change if needed
-        const API_BASE = 'http://localhost:8000';
+        // API base URL - теперь относительно того же домена
+        const API_BASE = '/api';
 
         document.addEventListener('DOMContentLoaded', function() {
             // Элементы DOM
@@ -359,28 +360,31 @@
                 breakDurationInput.addEventListener('change', updateTimerSettings);
             }
 
-            // API функции
-            async function apiRequest(endpoint, options = {}) {
-                try {
-                    const response = await fetch(`${API_BASE}${endpoint}`, {
-                        headers: {
-                            'Content-Type': 'application/json',
-                            ...options.headers
-                        },
-                        ...options
-                    });
+        // API функции
+        async function apiRequest(endpoint, options = {}) {
+            try {
+                const response = await fetch(`${API_BASE}${endpoint}`, {
+                    headers: {
+                        'Content-Type': 'application/json',
+                        ...options.headers
+                    },
+                    ...options
+                });
 
-                    if (!response.ok) {
-                        throw new Error(`HTTP error! status: ${response.status}`);
-                    }
-
-                    return await response.json();
-                } catch (error) {
-                    console.error('API request failed:', error);
-                    alert('Ошибка соединения с сервером. Проверьте, запущен ли бэкенд.');
-                    throw error;
+                if (!response.ok) {
+                    // Показываем более информативную ошибку
+                    const errorText = await response.text();
+                    throw new Error(`HTTP error! status: ${response.status}, details: ${errorText}`);
                 }
+
+                return await response.json();
+            } catch (error) {
+                console.error('API request failed:', error);
+                // Более информативное сообщение об ошибке
+                alert(`Ошибка соединения с сервером: ${error.message}. Проверьте, запущен ли бэкенд на localhost:8000.`);
+                throw error;
             }
+        }
 
             // Загрузка задач
             async function loadTasks() {
