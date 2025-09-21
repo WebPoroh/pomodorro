@@ -1,0 +1,710 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Pomodoro Таймер с Бэкендом</title>
+    <style>
+        :root {
+            --primary: #d95550;
+            --secondary: #4c9195;
+            --light: #f5f5f5;
+            --dark: #333;
+            --gray: #e0e0e0;
+        }
+
+        * {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+        }
+
+        body {
+            background-color: var(--light);
+            color: var(--dark);
+            line-height: 1.6;
+            padding: 20px;
+            max-width: 1200px;
+            margin: 0 auto;
+        }
+
+        header {
+            text-align: center;
+            margin-bottom: 30px;
+        }
+
+        h1 {
+            color: var(--primary);
+            margin-bottom: 10px;
+        }
+
+        .container {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 20px;
+        }
+
+        @media (max-width: 968px) {
+            .container {
+                grid-template-columns: 1fr;
+            }
+        }
+
+        .timer-section, .tasks-section, .stats-section {
+            background: white;
+            border-radius: 10px;
+            padding: 20px;
+            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+        }
+
+        .timer-display {
+            font-size: 80px;
+            text-align: center;
+            margin: 20px 0;
+            font-weight: bold;
+            color: var(--primary);
+        }
+
+        .timer-controls {
+            display: flex;
+            justify-content: center;
+            gap: 10px;
+            margin-bottom: 20px;
+        }
+
+        button {
+            padding: 10px 20px;
+            border: none;
+            border-radius: 5px;
+            background-color: var(--primary);
+            color: white;
+            font-weight: bold;
+            cursor: pointer;
+            transition: background-color 0.3s;
+        }
+
+        button:hover {
+            background-color: #c04a45;
+        }
+
+        button.secondary {
+            background-color: var(--secondary);
+        }
+
+        button.secondary:hover {
+            background-color: #438086;
+        }
+
+        button.danger {
+            background-color: #dc3545;
+        }
+
+        button.danger:hover {
+            background-color: #c82333;
+        }
+
+        .timer-mode {
+            text-align: center;
+            margin-bottom: 20px;
+            font-size: 18px;
+            font-weight: bold;
+        }
+
+        .current-task {
+            text-align: center;
+            margin-bottom: 20px;
+            font-style: italic;
+        }
+
+        .settings {
+            margin-top: 20px;
+            padding-top: 20px;
+            border-top: 1px solid var(--gray);
+        }
+
+        .settings h3 {
+            margin-bottom: 10px;
+        }
+
+        .settings-row {
+            display: flex;
+            justify-content: space-between;
+            margin-bottom: 10px;
+        }
+
+        .settings-row input {
+            width: 60px;
+            padding: 5px;
+        }
+
+        .task-list {
+            margin-top: 20px;
+        }
+
+        .task-item {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 10px;
+            border-bottom: 1px solid var(--gray);
+        }
+
+        .task-item:last-child {
+            border-bottom: none;
+        }
+
+        .task-info {
+            display: flex;
+            flex-direction: column;
+            flex-grow: 1;
+        }
+
+        .task-name {
+            font-weight: bold;
+        }
+
+        .task-progress {
+            font-size: 14px;
+            color: #666;
+        }
+
+        .task-controls {
+            display: flex;
+            gap: 5px;
+        }
+
+        .progress-bar {
+            height: 8px;
+            background-color: var(--gray);
+            border-radius: 4px;
+            margin-top: 5px;
+            overflow: hidden;
+        }
+
+        .progress-fill {
+            height: 100%;
+            border-radius: 4px;
+            transition: width 0.3s;
+        }
+
+        .completed .task-name {
+            text-decoration: line-through;
+        }
+
+        .add-task-form {
+            margin-top: 20px;
+            padding: 15px;
+            background-color: #f8f9fa;
+            border-radius: 5px;
+        }
+
+        .form-group {
+            margin-bottom: 10px;
+        }
+
+        .form-group label {
+            display: block;
+            margin-bottom: 5px;
+            font-weight: bold;
+        }
+
+        .form-group input {
+            width: 100%;
+            padding: 8px;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+        }
+
+        .stats-controls {
+            display: flex;
+            gap: 10px;
+            margin-bottom: 15px;
+        }
+
+        .stats-controls input {
+            padding: 8px;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+        }
+
+        .stats-results {
+            margin-top: 15px;
+        }
+
+        .stats-day {
+            margin-bottom: 15px;
+            padding: 10px;
+            background-color: #f8f9fa;
+            border-radius: 5px;
+        }
+
+        .stats-task {
+            display: flex;
+            justify-content: space-between;
+            margin: 5px 0;
+        }
+    </style>
+</head>
+<body>
+    <header>
+        <h1>Pomodoro Таймер с Бэкендом</h1>
+        <p>Отслеживайте вашу продуктивность с историей и статистикой</p>
+    </header>
+
+    <div class="container">
+        <section class="timer-section">
+            <div class="timer-mode" id="timerMode">Готов к работе</div>
+            <div class="timer-display" id="timer">25:00</div>
+            <div class="current-task" id="currentTask">Выберите задачу</div>
+
+            <div class="timer-controls">
+                <button id="startBtn">Старт</button>
+                <button id="pauseBtn" disabled>Пауза</button>
+                <button id="skipBtn" class="secondary">Пропустить</button>
+            </div>
+
+            <div class="settings">
+                <h3>Настройки таймера</h3>
+                <div class="settings-row">
+                    <label for="workDuration">Длительность помидора (мин):</label>
+                    <input type="number" id="workDuration" min="1" max="60" value="25">
+                </div>
+                <div class="settings-row">
+                    <label for="breakDuration">Длительность перерыва (мин):</label>
+                    <input type="number" id="breakDuration" min="1" max="30" value="5">
+                </div>
+            </div>
+        </section>
+
+        <section class="tasks-section">
+            <h2>Задачи</h2>
+            <div class="task-list" id="taskList">
+                <!-- Tasks will be added here dynamically -->
+            </div>
+
+            <div class="add-task-form">
+                <h3>Добавить новую задачу</h3>
+                <div class="form-group">
+                    <label for="newTaskName">Название задачи:</label>
+                    <input type="text" id="newTaskName" placeholder="Введите название задачи">
+                </div>
+                <div class="form-group">
+                    <label for="newTaskTarget">Целевое количество помидоров:</label>
+                    <input type="number" id="newTaskTarget" min="1" value="4">
+                </div>
+                <button id="addTaskBtn">Добавить задачу</button>
+            </div>
+        </section>
+
+        <section class="stats-section">
+            <h2>Статистика</h2>
+            <div class="stats-controls">
+                <input type="month" id="statsMonth" value="">
+                <button id="loadStatsBtn">Загрузить статистику</button>
+            </div>
+            <div class="stats-results" id="statsResults">
+                <!-- Statistics will be added here dynamically -->
+            </div>
+        </section>
+    </div>
+
+    <script>
+        // API base URL - change if needed
+        const API_BASE = 'http://localhost:8000';
+
+        document.addEventListener('DOMContentLoaded', function() {
+            // Элементы DOM
+            const timerDisplay = document.getElementById('timer');
+            const timerMode = document.getElementById('timerMode');
+            const currentTask = document.getElementById('currentTask');
+            const startBtn = document.getElementById('startBtn');
+            const pauseBtn = document.getElementById('pauseBtn');
+            const skipBtn = document.getElementById('skipBtn');
+            const workDurationInput = document.getElementById('workDuration');
+            const breakDurationInput = document.getElementById('breakDuration');
+            const taskList = document.getElementById('taskList');
+            const newTaskNameInput = document.getElementById('newTaskName');
+            const newTaskTargetInput = document.getElementById('newTaskTarget');
+            const addTaskBtn = document.getElementById('addTaskBtn');
+            const statsMonthInput = document.getElementById('statsMonth');
+            const loadStatsBtn = document.getElementById('loadStatsBtn');
+            const statsResults = document.getElementById('statsResults');
+
+            // Установим текущий месяц в поле выбора
+            const now = new Date();
+            statsMonthInput.value = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
+
+            // Состояние приложения
+            let timer;
+            let timeLeft;
+            let isRunning = false;
+            let isWorkTime = true;
+            let currentTaskId = null;
+            let tasks = [];
+
+            // Инициализация
+            async function init() {
+                await loadTasks();
+                updateTimerDisplay();
+
+                // Обработчики событий
+                startBtn.addEventListener('click', startTimer);
+                pauseBtn.addEventListener('click', pauseTimer);
+                skipBtn.addEventListener('click', skipTimer);
+                addTaskBtn.addEventListener('click', addNewTask);
+                loadStatsBtn.addEventListener('click', loadStatistics);
+
+                workDurationInput.addEventListener('change', updateTimerSettings);
+                breakDurationInput.addEventListener('change', updateTimerSettings);
+            }
+
+            // API функции
+            async function apiRequest(endpoint, options = {}) {
+                try {
+                    const response = await fetch(`${API_BASE}${endpoint}`, {
+                        headers: {
+                            'Content-Type': 'application/json',
+                            ...options.headers
+                        },
+                        ...options
+                    });
+
+                    if (!response.ok) {
+                        throw new Error(`HTTP error! status: ${response.status}`);
+                    }
+
+                    return await response.json();
+                } catch (error) {
+                    console.error('API request failed:', error);
+                    alert('Ошибка соединения с сервером. Проверьте, запущен ли бэкенд.');
+                    throw error;
+                }
+            }
+
+            // Загрузка задач
+            async function loadTasks() {
+                try {
+                    tasks = await apiRequest('/tasks/');
+                    renderTasks();
+                } catch (error) {
+                    console.error('Failed to load tasks:', error);
+                }
+            }
+
+            // Добавление новой задачи
+            async function addNewTask() {
+                const name = newTaskNameInput.value.trim();
+                const target = parseInt(newTaskTargetInput.value);
+
+                if (!name) {
+                    alert('Введите название задачи');
+                    return;
+                }
+
+                if (isNaN(target) || target < 1) {
+                    alert('Введите корректное количество помидоров');
+                    return;
+                }
+
+                try {
+                    await apiRequest('/tasks/', {
+                        method: 'POST',
+                        body: JSON.stringify({
+                            name,
+                            target_pomodoros: target
+                        })
+                    });
+
+                    // Очищаем поля и обновляем список
+                    newTaskNameInput.value = '';
+                    newTaskTargetInput.value = '4';
+                    await loadTasks();
+                } catch (error) {
+                    console.error('Failed to add task:', error);
+                }
+            }
+
+            // Удаление задачи
+            async function deleteTask(taskId) {
+                if (!confirm('Вы уверены, что хотите удалить эту задачу?')) {
+                    return;
+                }
+
+                try {
+                    await apiRequest(`/tasks/${taskId}`, {
+                        method: 'DELETE'
+                    });
+
+                    await loadTasks();
+                } catch (error) {
+                    console.error('Failed to delete task:', error);
+                }
+            }
+
+            // Обновление задачи
+            async function updateTask(taskId, updates) {
+                try {
+                    await apiRequest(`/tasks/${taskId}`, {
+                        method: 'PUT',
+                        body: JSON.stringify(updates)
+                    });
+
+                    await loadTasks();
+                } catch (error) {
+                    console.error('Failed to update task:', error);
+                }
+            }
+
+            // Добавление выполненного помидора
+            async function addPomodoro(taskId, duration) {
+                try {
+                    await apiRequest('/pomodoros/', {
+                        method: 'POST',
+                        body: JSON.stringify({
+                            task_id: taskId,
+                            duration: duration
+                        })
+                    });
+
+                    await loadTasks();
+                } catch (error) {
+                    console.error('Failed to add pomodoro:', error);
+                }
+            }
+
+            // Загрузка статистики
+            async function loadStatistics() {
+                const [year, month] = statsMonthInput.value.split('-');
+
+                try {
+                    const stats = await apiRequest(`/stats/monthly?year=${year}&month=${month}`);
+                    renderStatistics(stats);
+                } catch (error) {
+                    console.error('Failed to load statistics:', error);
+                }
+            }
+
+            // Отображение задач
+            function renderTasks() {
+                taskList.innerHTML = '';
+
+                tasks.forEach(task => {
+                    const taskItem = document.createElement('div');
+                    taskItem.className = `task-item ${task.completed_today >= task.target_pomodoros ? 'completed' : ''}`;
+
+                    const progressPercent = Math.min(100, (task.completed_today / task.target_pomodoros) * 100);
+
+                    taskItem.innerHTML = `
+                        <div class="task-info">
+                            <span class="task-name">${task.name}</span>
+                            <span class="task-progress">${task.completed_today}/${task.target_pomodoros} помидоров</span>
+                            <div class="progress-bar">
+                                <div class="progress-fill" style="width: ${progressPercent}%; background-color: ${task.color || '#d95550'}"></div>
+                            </div>
+                        </div>
+                        <div class="task-controls">
+                            <button onclick="app.incrementTask(${task.id})">+</button>
+                            <button onclick="app.setCurrentTask(${task.id})">Выбрать</button>
+                            <button class="danger" onclick="app.deleteTask(${task.id})">Удалить</button>
+                        </div>
+                    `;
+
+                    taskList.appendChild(taskItem);
+                });
+            }
+
+            // Отображение статистики
+            function renderStatistics(stats) {
+                statsResults.innerHTML = '';
+
+                if (Object.keys(stats).length === 0) {
+                    statsResults.innerHTML = '<p>Нет данных за выбранный период</p>';
+                    return;
+                }
+
+                // Преобразуем в массив и сортируем по дате
+                const sortedDates = Object.entries(stats)
+                    .sort(([dateA], [dateB]) => new Date(dateA) - new Date(dateB));
+
+                sortedDates.forEach(([dateStr, data]) => {
+                    const dayElement = document.createElement('div');
+                    dayElement.className = 'stats-day';
+
+                    let tasksHtml = '';
+                    if (data.tasks && Object.keys(data.tasks).length > 0) {
+                        for (const [taskName, count] of Object.entries(data.tasks)) {
+                            tasksHtml += `
+                                <div class="stats-task">
+                                    <span>${taskName}</span>
+                                    <span>${count} помидоров</span>
+                                </div>
+                            `;
+                        }
+                    } else {
+                        tasksHtml = '<p>Нет выполненных задач</p>';
+                    }
+
+                    dayElement.innerHTML = `
+                        <h3>${dateStr} (всего: ${data.completed})</h3>
+                        ${tasksHtml}
+                    `;
+
+                    statsResults.appendChild(dayElement);
+                });
+            }
+
+            // Обновление отображения таймера
+            function updateTimerDisplay() {
+                const minutes = Math.floor(timeLeft / 60);
+                const seconds = timeLeft % 60;
+                timerDisplay.textContent = `${minutes.toString().padStart(2, '0')}:${seconds.toString().padStart(2, '0')}`;
+            }
+
+            // Обновление текста режима таймера
+            function updateTimerModeText() {
+                if (!isRunning) {
+                    timerMode.textContent = isWorkTime ? 'Готов к работе' : 'Перерыв';
+                    timerMode.style.color = isWorkTime ? 'var(--primary)' : 'var(--secondary)';
+                } else {
+                    timerMode.textContent = isWorkTime ? 'Работаем!' : 'Перерыв';
+                    timerMode.style.color = isWorkTime ? 'var(--primary)' : 'var(--secondary)';
+                }
+            }
+
+            // Сброс таймера
+            function resetTimer() {
+                clearInterval(timer);
+                isRunning = false;
+
+                const duration = isWorkTime ?
+                    parseInt(workDurationInput.value) * 60 :
+                    parseInt(breakDurationInput.value) * 60;
+
+                timeLeft = duration;
+                updateTimerDisplay();
+                updateTimerModeText();
+
+                startBtn.disabled = false;
+                pauseBtn.disabled = true;
+            }
+
+            // Запуск таймера
+            function startTimer() {
+                if (isRunning || !currentTaskId) return;
+
+                isRunning = true;
+                startBtn.disabled = true;
+                pauseBtn.disabled = false;
+
+                updateTimerModeText();
+
+                timer = setInterval(() => {
+                    timeLeft--;
+                    updateTimerDisplay();
+
+                    if (timeLeft <= 0) {
+                        clearInterval(timer);
+
+                        if (isWorkTime) {
+                            // Завершение помидора
+                            addPomodoro(currentTaskId, parseInt(workDurationInput.value));
+
+                            // Уведомление
+                            if (Notification.permission === 'granted') {
+                                new Notification('Помидор завершен! Время отдохнуть.');
+                            } else if (Notification.permission !== 'denied') {
+                                Notification.requestPermission().then(permission => {
+                                    if (permission === 'granted') {
+                                        new Notification('Помидор завершен! Время отдохнуть.');
+                                    }
+                                });
+                            }
+
+                            // Переключение на перерыв
+                            isWorkTime = false;
+                        } else {
+                            // Завершение перерыва
+                            if (Notification.permission === 'granted') {
+                                new Notification('Перерыв завершен! Время работать.');
+                            } else if (Notification.permission !== 'denied') {
+                                Notification.requestPermission().then(permission => {
+                                    if (permission === 'granted') {
+                                        new Notification('Перерыв завершен! Время работать.');
+                                    }
+                                });
+                            }
+
+                            // Переключение на работу
+                            isWorkTime = true;
+                        }
+
+                        resetTimer();
+                    }
+                }, 1000);
+            }
+
+            // Пауза таймера
+            function pauseTimer() {
+                clearInterval(timer);
+                isRunning = false;
+                startBtn.disabled = false;
+                pauseBtn.disabled = true;
+
+                timerMode.textContent = isWorkTime ? 'На паузе' : 'Перерыв на паузе';
+            }
+
+            // Пропуск текущего интервала
+            function skipTimer() {
+                clearInterval(timer);
+
+                if (isWorkTime) {
+                    isWorkTime = false;
+                } else {
+                    isWorkTime = true;
+                }
+
+                resetTimer();
+            }
+
+            // Обновление настроек таймера
+            function updateTimerSettings() {
+                if (!isRunning) {
+                    resetTimer();
+                }
+            }
+
+            // Установка текущей задачи
+            function setCurrentTask(taskId) {
+                currentTaskId = taskId;
+                const task = tasks.find(t => t.id === taskId);
+                if (task) {
+                    currentTask.textContent = `Текущая задача: ${task.name}`;
+                    currentTask.style.color = task.color || '#d95550';
+                }
+            }
+
+            // Увеличение счетчика выполненых помидоров
+            async function incrementTask(taskId) {
+                await addPomodoro(taskId, parseInt(workDurationInput.value));
+            }
+
+            // Глобальные функции для обработчиков событий в HTML
+            window.app = {
+                incrementTask,
+                setCurrentTask,
+                deleteTask
+            };
+
+            // Запрос разрешения на уведомления
+            if ('Notification' in window) {
+                Notification.requestPermission();
+            }
+
+            // Инициализация приложения
+            init();
+            resetTimer();
+        });
+    </script>
+</body>
+</html>
