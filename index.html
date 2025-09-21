@@ -28,6 +28,33 @@
             padding: 20px;
             max-width: 1200px;
             margin: 0 auto;
+            position: relative;
+        }
+
+        .connection-status {
+            position: fixed;
+            top: 10px;
+            right: 10px;
+            padding: 5px 10px;
+            border-radius: 15px;
+            font-size: 12px;
+            font-weight: bold;
+            z-index: 1000;
+        }
+
+        .connected {
+            background-color: #4CAF50;
+            color: white;
+        }
+
+        .disconnected {
+            background-color: #f44336;
+            color: white;
+        }
+
+        .connecting {
+            background-color: #FF9800;
+            color: white;
         }
 
         header {
@@ -248,6 +275,8 @@
     </style>
 </head>
 <body>
+    <div id="connectionStatus" class="connection-status connecting">Connecting...</div>
+
     <header>
         <h1>Pomodoro Таймер с Бэкендом</h1>
         <p>Отслеживайте вашу продуктивность с историей и статистикой</p>
@@ -311,8 +340,12 @@
     </div>
 
     <script>
-        // API base URL - теперь относительно того же домена
+        // API base URL
         const API_BASE = '/api';
+
+        // WebSocket connection
+        let ws = null;
+        let isConnected = false;
 
         document.addEventListener('DOMContentLoaded', function() {
             // Элементы DOM
@@ -331,6 +364,7 @@
             const statsMonthInput = document.getElementById('statsMonth');
             const loadStatsBtn = document.getElementById('loadStatsBtn');
             const statsResults = document.getElementById('statsResults');
+            const connectionStatus = document.getElementById('connectionStatus');
 
             // Установим текущий месяц в поле выбора
             const now = new Date();
@@ -347,7 +381,8 @@
             // Инициализация
             async function init() {
                 await loadTasks();
-                updateTimerDisplay();
+                await loadTimerState(); // Загружаем состояние таймера с сервера
+                connectWebSocket();
 
                 // Обработчики событий
                 startBtn.addEventListener('click', startTimer);
@@ -360,31 +395,172 @@
                 breakDurationInput.addEventListener('change', updateTimerSettings);
             }
 
-        // API функции
-        async function apiRequest(endpoint, options = {}) {
-            try {
-                const response = await fetch(`${API_BASE}${endpoint}`, {
-                    headers: {
-                        'Content-Type': 'application/json',
-                        ...options.headers
-                    },
-                    ...options
-                });
+            // WebSocket functions
+            function connectWebSocket() {
+                const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+                const wsUrl = `${protocol}//${window.location.host}/ws`;
 
-                if (!response.ok) {
-                    // Показываем более информативную ошибку
-                    const errorText = await response.text();
-                    throw new Error(`HTTP error! status: ${response.status}, details: ${errorText}`);
+                try {
+                    ws = new WebSocket(wsUrl);
+
+                    ws.onopen = () => {
+                        console.log('Connected to server');
+                        isConnected = true;
+                        connectionStatus.textContent = 'Connected';
+                        connectionStatus.className = 'connection-status connected';
+                    };
+
+                    ws.onmessage = (event) => {
+                        const data = JSON.parse(event.data);
+                        handleWebSocketMessage(data);
+                    };
+
+                    ws.onclose = () => {
+                        console.log('Disconnected from server');
+                        isConnected = false;
+                        connectionStatus.textContent = 'Disconnected';
+                        connectionStatus.className = 'connection-status disconnected';
+
+                        // Try to reconnect after 5 seconds
+                        setTimeout(connectWebSocket, 5000);
+                    };
+
+                    ws.onerror = (error) => {
+                        console.error('WebSocket error:', error);
+                        isConnected = false;
+                        connectionStatus.textContent = 'Error';
+                        connectionStatus.className = 'connection-status disconnected';
+                    };
+                } catch (error) {
+                    console.error('Failed to connect WebSocket:', error);
+                    isConnected = false;
+                    connectionStatus.textContent = 'Error';
+                    connectionStatus.className = 'connection-status disconnected';
+                }
+            }
+
+            function handleWebSocketMessage(data) {
+                switch (data.type) {
+                    case 'initial_state':
+                        updateUIFromState(data.timer);
+                        break;
+                    case 'timer_update':
+                        updateUIFromState(data.data);
+                        break;
+                    case 'timer_complete':
+                        if (data.is_work_time) {
+                            showNotification('Pomodoro Completed!', 'Time for a break.');
+                        } else {
+                            showNotification('Break Completed!', 'Time to work.');
+                        }
+                        break;
+                    case 'mode_change':
+                        isWorkTime = data.is_work_time;
+                        resetTimer();
+                        break;
+                }
+            }
+
+            function updateUIFromState(state) {
+                // Update timer display
+                const minutes = Math.floor(state.time_left / 60);
+                const seconds = state.time_left % 60;
+                timerDisplay.textContent = `${minutes.toString().padStart(2, '0')}:${seconds.toString().padStart(2, '0')}`;
+
+                // Update mode
+                isWorkTime = state.is_work_time;
+                updateTimerModeText();
+
+                // Update buttons
+                startBtn.disabled = state.is_running || !state.current_task_id;
+                pauseBtn.disabled = !state.is_running;
+
+                // Update current task
+                if (state.current_task_id) {
+                    const task = tasks.find(t => t.id === state.current_task_id);
+                    if (task) {
+                        currentTask.textContent = `Текущая задача: ${task.name}`;
+                        currentTask.style.color = task.color || '#d95550';
+                    }
+                } else {
+                    currentTask.textContent = "Выберите задачу";
+                    currentTask.style.color = "#666";
                 }
 
-                return await response.json();
-            } catch (error) {
-                console.error('API request failed:', error);
-                // Более информативное сообщение об ошибке
-                alert(`Ошибка соединения с сервером: ${error.message}. Проверьте, запущен ли бэкенд на localhost:8000.`);
-                throw error;
+                // Update settings inputs
+                workDurationInput.value = Math.floor(state.work_duration / 60);
+                breakDurationInput.value = Math.floor(state.break_duration / 60);
             }
-        }
+
+            function sendWebSocketMessage(message) {
+                if (ws && ws.readyState === WebSocket.OPEN) {
+                    ws.send(JSON.stringify(message));
+                } else {
+                    console.warn('WebSocket is not connected');
+                    // Fallback to API calls if WebSocket is not available
+                    fallbackApiCall(message);
+                }
+            }
+
+            async function fallbackApiCall(message) {
+                try {
+                    switch (message.type) {
+                        case 'start_timer':
+                            await apiRequest('/timer/start/', { method: 'POST' });
+                            break;
+                        case 'pause_timer':
+                            await apiRequest('/timer/pause/', { method: 'POST' });
+                            break;
+                        case 'skip_timer':
+                            await apiRequest('/timer/skip/', { method: 'POST' });
+                            break;
+                        case 'update_settings':
+                            await apiRequest('/timer/settings/', {
+                                method: 'PUT',
+                                body: JSON.stringify({
+                                    work_duration: message.work_duration,
+                                    break_duration: message.break_duration
+                                })
+                            });
+                            break;
+                        case 'set_task':
+                            await apiRequest(`/timer/task/${message.task_id}`, { method: 'PUT' });
+                            break;
+                    }
+
+                    // Update UI after API call
+                    const state = await apiRequest('/timer/');
+                    if (state) {
+                        updateUIFromState(state);
+                    }
+                } catch (error) {
+                    console.error('API fallback failed:', error);
+                }
+            }
+
+            // API функции
+            async function apiRequest(endpoint, options = {}) {
+                try {
+                    const response = await fetch(`${API_BASE}${endpoint}`, {
+                        headers: {
+                            'Content-Type': 'application/json',
+                            ...options.headers
+                        },
+                        ...options
+                    });
+
+                    if (!response.ok) {
+                        const errorText = await response.text();
+                        throw new Error(`HTTP error! status: ${response.status}, details: ${errorText}`);
+                    }
+
+                    return await response.json();
+                } catch (error) {
+                    console.error('API request failed:', error);
+                    alert(`Ошибка соединения с сервером: ${error.message}. Проверьте, запущен ли бэкенд на localhost:8000.`);
+                    throw error;
+                }
+            }
 
             // Загрузка задач
             async function loadTasks() {
@@ -393,6 +569,18 @@
                     renderTasks();
                 } catch (error) {
                     console.error('Failed to load tasks:', error);
+                }
+            }
+
+            // Загрузка состояния таймера
+            async function loadTimerState() {
+                try {
+                    const state = await apiRequest('/timer/');
+                    if (state) {
+                        updateUIFromState(state);
+                    }
+                } catch (error) {
+                    console.error('Failed to load timer state:', error);
                 }
             }
 
@@ -595,102 +783,52 @@
 
             // Запуск таймера
             function startTimer() {
-                if (isRunning || !currentTaskId) return;
-
-                isRunning = true;
-                startBtn.disabled = true;
-                pauseBtn.disabled = false;
-
-                updateTimerModeText();
-
-                timer = setInterval(() => {
-                    timeLeft--;
-                    updateTimerDisplay();
-
-                    if (timeLeft <= 0) {
-                        clearInterval(timer);
-
-                        if (isWorkTime) {
-                            // Завершение помидора
-                            addPomodoro(currentTaskId, parseInt(workDurationInput.value));
-
-                            // Уведомление
-                            if (Notification.permission === 'granted') {
-                                new Notification('Помидор завершен! Время отдохнуть.');
-                            } else if (Notification.permission !== 'denied') {
-                                Notification.requestPermission().then(permission => {
-                                    if (permission === 'granted') {
-                                        new Notification('Помидор завершен! Время отдохнуть.');
-                                    }
-                                });
-                            }
-
-                            // Переключение на перерыв
-                            isWorkTime = false;
-                        } else {
-                            // Завершение перерыва
-                            if (Notification.permission === 'granted') {
-                                new Notification('Перерыв завершен! Время работать.');
-                            } else if (Notification.permission !== 'denied') {
-                                Notification.requestPermission().then(permission => {
-                                    if (permission === 'granted') {
-                                        new Notification('Перерыв завершен! Время работать.');
-                                    }
-                                });
-                            }
-
-                            // Переключение на работу
-                            isWorkTime = true;
-                        }
-
-                        resetTimer();
-                    }
-                }, 1000);
+                sendWebSocketMessage({ type: 'start_timer' });
             }
 
             // Пауза таймера
             function pauseTimer() {
-                clearInterval(timer);
-                isRunning = false;
-                startBtn.disabled = false;
-                pauseBtn.disabled = true;
-
-                timerMode.textContent = isWorkTime ? 'На паузе' : 'Перерыв на паузе';
+                sendWebSocketMessage({ type: 'pause_timer' });
             }
 
             // Пропуск текущего интервала
             function skipTimer() {
-                clearInterval(timer);
-
-                if (isWorkTime) {
-                    isWorkTime = false;
-                } else {
-                    isWorkTime = true;
-                }
-
-                resetTimer();
+                sendWebSocketMessage({ type: 'skip_timer' });
             }
 
             // Обновление настроек таймера
             function updateTimerSettings() {
-                if (!isRunning) {
-                    resetTimer();
-                }
+                sendWebSocketMessage({
+                    type: 'update_settings',
+                    work_duration: parseInt(workDurationInput.value) * 60,
+                    break_duration: parseInt(breakDurationInput.value) * 60
+                });
             }
 
             // Установка текущей задачи
             function setCurrentTask(taskId) {
-                currentTaskId = taskId;
-                const task = tasks.find(t => t.id === taskId);
-                if (task) {
-                    currentTask.textContent = `Текущая задача: ${task.name}`;
-                    currentTask.style.color = task.color || '#d95550';
-                }
+                sendWebSocketMessage({
+                    type: 'set_task',
+                    task_id: taskId
+                });
             }
 
             // Увеличение счетчика выполненых помидоров
             async function incrementTask(taskId) {
                 await addPomodoro(taskId, parseInt(workDurationInput.value));
+            }
+
+            // Показать уведомление
+            function showNotification(title, message) {
+                if (Notification.permission === 'granted') {
+                    new Notification(title, { body: message });
+                } else if (Notification.permission !== 'denied') {
+                    Notification.requestPermission().then(permission => {
+                        if (permission === 'granted') {
+                            new Notification(title, { body: message });
+                        }
+                    });
+                }
             }
 
             // Глобальные функции для обработчиков событий в HTML
@@ -707,7 +845,6 @@
 
             // Инициализация приложения
             init();
-            resetTimer();
         });
     </script>
 </body>
